@@ -5,6 +5,28 @@ import cv2
 
 #when video updated, use
 #python detect_targets.py --video my_video.mp4
+/*
+If len(approx) ==3:
+    shape = "Triangle"
+or something along those lines, 4 - rectangle, 6 = circle, else = polygon
+and put text with like 
+cv2.putText(frame, shape, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+Or maybe use a target counter set up at the start, add it each time and then put text with something liek that
+
+Maybe only detect certain colours? Example code
+hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+lower_red = np.array([0, 120, 70])
+upper_red = np.array([10, 255, 255])
+mask1 = cv2.inRange(hsv, lower_red, upper_red)
+frame = cv2.bitwise_and(frame, frame, mask=mask1)
+
+Also stolen code
+cv2.putText(frame, f"{w}x{h}", (x, y + h + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+
+*/
+#Maybe add like an
+
 
 
 
@@ -45,7 +67,7 @@ while True:
     for c in cnts:
         #aprx the contour
         peri = cv2.arcLength(c, True) #calc perimiter of contour
-        approx = cv2.approxPolyDB (c, 0.01 * peri, True) #simplifiy contour into fewer points
+        approx = cv2.approxPolyDP (c, 0.01 * peri, True) #simplifiy contour into fewer points
 
         #ensure that aprx contour is "roughly" rectangular
         if len(approx) >= 4 and len(approx) <= 6: #if it doesn't fit, this is ignored
