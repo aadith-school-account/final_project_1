@@ -1,0 +1,360 @@
+import mediapipe as mp
+import cv2
+import time
+
+
+mp_drawing = mp.solutions.drawing_utils
+mp_holistic = mp.solutions.holistic
+
+"""
+
+Simple landmark index reference
+0 - wrist
+1-4: Thumb
+5-8: Index finger
+9-12: Middle finger
+13-16: Ring finger
+17-20: Pinky finger
+
+Compare tip to knucle to recognize, except thumb
+
+8 - tip of index finger
+12 - tip of middle finger
+16 - tip of ring finger
+20 - tip of pinky finger
+
+knuckles
+6 - knuckle of index finger
+10 - knuckle of middle finger
+14 - knuckle of ring finger
+18 - knuckle of pinky finger
+
+"""
+
+
+def fingers_up(hand_landmarks, is_left=False):
+    #ref bottom for landmark index
+    tips_ids = [4, 8, 12, 16, 20]
+    #empty list to hold finger states
+    fingers = []
+
+    # Thumb: check x axis instead of y (since thumb is horizontal)
+    #Check of thumb TIP is to the LEFT of previous joint(cuz sideways)
+
+    if is_left:
+        # Left hand: thumb tip is to the RIGHT of joint when extended
+        if hand_landmarks.landmark[4].x > hand_landmarks.landmark[3].x:
+            fingers.append(1)
+        else:
+            fingers.append(0)
+    else:
+        # Right hand: thumb tip is to the LEFT of joint when extended
+        if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
+            fingers.append(1)
+        else:
+            fingers.append(0)
+    
+    # Other 4 fingers
+    #compare if tip.y < knuckle.y
+    for tip_id in tips_ids[1:]: #skip thumb
+        if hand_landmarks.landmark[tip_id].y < hand_landmarks.landmark[tip_id - 2].y:
+            fingers.append(1) #finger is up
+        else:
+            fingers.append(0) #finger is down
+
+    #when calling, just do
+    # if total_fingers == x:
+    # can also do combos ex if fingers == [1, 0, 1, 0, 1]:
+
+    return fingers #as list
+
+def is_fist(hand, is_left=False):
+    fingers = fingers_up(hand, is_left)
+    #return list of fingers
+
+    if fingers == [0, 0, 0, 0, 0]:
+        return True
+    else:
+        return False
+
+def is_rock_sign(hand, is_left=False):
+    fingers = fingers_up(hand, is_left)
+    #return list of fingers
+
+    if fingers == [1, 1, 0, 0, 1]:
+        return True
+    else:
+        return False
+    
+def is_pew_pew(hand, is_left=False):
+    fingers = fingers_up(hand, is_left=is_left)
+
+    if fingers == [1, 1, 1, 0, 0]:
+        return True
+    else:
+        return False
+    
+def is_peace_sign(hand, is_left=False):
+    fingers = fingers_up(hand, is_left=is_left)
+
+    if fingers == [0, 1, 1, 0, 0]:
+        return True
+    else:
+        return False
+
+
+
+"""
+List reference!
+
+[x, 0, 0, 0, 0] = Thumb up
+[0, 1, 0, 0, 0] = Pointer finger up
+[0, 0, 1, 0, 0] = Middle finger up
+[0, 0, 0, 1, 0] = Ring finger up
+[0, 0, 0, 0, 1] = Pinky finger up
+"""
+
+
+cap = cv2.VideoCapture(0)
+# Initiate holistic model
+with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        
+        # Recolor Feed
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Make Detections
+        results = holistic.process(image)
+        # print(results.face_landmarks)
+        
+        # face_landmarks, pose_landmarks, left_hand_landmarks, right_hand_landmarks
+        
+        # Recolor image back to BGR for rendering
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        # 1. Draw face landmarks
+        """
+        mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
+                                 mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1),
+                                 mp_drawing.DrawingSpec(color=(80,256,121), thickness=1, circle_radius=1)
+                                 )
+        """
+
+        # 2. Right hand
+        mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                                 mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
+                                 mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
+                                 )
+        
+        if results.right_hand_landmarks:
+            right_fingers = fingers_up(results.right_hand_landmarks, is_left=False)
+            right_count = sum(right_fingers)
+            cv2.putText(image, f'Right Fingers: {right_count}', (50, 50), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            
+            if is_fist(results.right_hand_landmarks):
+                cv2.putText(image, "Fist Detected!", (50, 150), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA) 
+            elif is_rock_sign(results.right_hand_landmarks):
+                cv2.putText(image, "Peace Sign Detected!", (50, 150),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            elif is_pew_pew(results.right_hand_landmarks, is_left=False):
+                cv2.putText(image, "Pew Pew Detected!", (50, 150),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+            elif is_peace_sign(results.right_hand_landmarks, is_left=False):
+                cv2.putText(image, "Peace Sign Detected!", (50, 150),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+
+
+
+        # 3. Left Hand
+
+        mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                                 mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
+                                 mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
+                                 )
+        
+        if results.left_hand_landmarks:
+            left_fingers = fingers_up(results.left_hand_landmarks, is_left=True)
+            left_count = sum(left_fingers)
+            cv2.putText(image, f'Left Fingers: {left_count}', (50, 100), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            
+
+
+        
+
+        # 4. Pose Detections
+        """
+        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
+                                 mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4),
+                                 mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                                 )
+        """
+
+                        
+        cv2.imshow('Raw Webcam Feed', image)
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
+
+cap.release()
+cv2.destroyAllWindows()
+
+
+
+
+
+
+
+
+
+
+"""
+def check_gestures():
+    cap = cv2.VideoCapture(0)
+
+    with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+
+        while cap.isOpened():
+            grabbed, frame = cap.read()
+
+            if not grabbed:
+                break
+            
+            # Recolor Feed
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Make Detections
+            results = holistic.process(image)
+            #swtich bck to BGR
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+        
+            #right hand
+            mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
+                mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
+            )
+            mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
+                mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
+                )
+
+            if results.right_hand_landmarks:
+                right_fingers = fingers_up(results.right_hand_landmarks, is_left=False)
+                right_count = sum(right_fingers)
+
+
+                cv2.putText(image, f'Right Fingers: {right_count}', (50, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                while True:
+                    is_f = is_fist(results.right_hand_landmarks)
+                    is_rock = is_rock_sign(results.right_hand_landmarks)
+                    is_pew = is_pew_pew(results.right_hand_landmarks)
+                    is_peace = is_peace_sign(results.right_hand_landmarks)
+
+                    if is_f == True:
+                        cv2.putText(image, "Fist Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'fist'
+                        break
+                
+                    elif is_rock == True:
+                        cv2.putText(image, "Rock On Sign Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'rock'
+                        break
+                    
+                    elif is_pew == True:
+                        cv2.putText(image, "Pew Pew Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'pew-pew'
+                        break
+                    
+                    elif is_peace == True:
+                        cv2.putText(image, "Peace Sign Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'peace'
+                        break
+                    else:
+                        pass
+
+                    break
+                    
+                
+                
+                time.sleep(2)
+                cap.release()
+                cv2.destroyAllWindows()    
+            
+            elif results.left_hand_landmarks:
+                left_fingers = fingers_up(results.left_hand_landmarks, is_left=True)
+                left_count = sum(left_fingers)
+
+                cv2.putText(image, f'Left Fingers: {left_count}', (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+                while True:
+                    is_f = is_fist(results.left_hand_landmarks, is_left = True)
+                    is_rock = is_rock_sign(results.left_hand_landmarks, is_left=True)
+                    is_pew = is_pew_pew(results.left_hand_landmarks, is_left=True)
+                    is_peace = is_peace_sign(results.left_hand_landmarks, is_left=True)
+
+
+                    if is_f == True:
+                        cv2.putText(image, "Fist Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'fist'
+                        break
+
+                    elif is_rock == True:
+                        cv2.putText(image, "Rock On Sign Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'rock'
+                        break
+
+                    elif is_pew == True:
+                        cv2.putText(image, "Pew Pew Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'pew-pew'
+                        break
+                        
+                    elif is_peace == True:
+                        cv2.putText(image, "Peace Sign Detected!", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                        time.sleep(2)
+                        return 'peace'
+                        break
+                    else:
+                        pass
+
+                    break
+
+
+                time.sleep(2)
+                
+                cap.release()
+                cv2.destroyAllWindows()  
+            cv2.imshow('Raw Webcam Feed', image)
+            
+            if cv2.waitKey(10) & 0xFF == ord('q'):
+                break
+
+
+
+
+
+poop = check_gestures()
+time.sleep(2)
+print(poop)
+time.sleep(2)
+"""
+    
+
+            
+
+            
+
+        
+
+
+        
